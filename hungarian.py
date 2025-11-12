@@ -1,18 +1,22 @@
 import numpy as np
+import json
 from scipy.optimize import linear_sum_assignment
 
-def calculate_path_time(path_length_miles, num_nodes, is_drone=True):
+def calculate_path_time(path_length_feet, num_nodes, is_drone=True):
     """
     Calculate total time for an agent to traverse a path.
     
     Args:
-        path_length_miles: Total path length in miles
+        path_length_feet: Total path length in feet
         num_nodes: Number of nodes in the path
         is_drone: Boolean indicating if the agent is a drone (True) or firefighter (False)
     
     Returns:
         Total time in seconds
     """
+    # Convert path length from feet to miles
+    path_length_miles = path_length_feet / 5280.0
+    
     # Speed in miles per hour
     speed_mph = 30 if is_drone else 10  # 30 mph for drone, 10 mph for firefighter
     speed_mps = speed_mph * 0.44704  # Convert mph to meters per second
@@ -85,40 +89,109 @@ def assign_agents(paths, agent_types):
         'cost_matrix': cost_matrix
     }
 
-def print_assignment(assignment_result):
+def get_paths_from_customsolution(points, num_agents=5, time_limit=10):
+    """
+    Get paths from customsolution.py and convert to format for Hungarian algorithm.
+    
+    Args:
+        points: List of [x,y] coordinates (first point is the depot)
+        num_agents: Number of agents/salesmen
+        time_limit: Time limit for the solver in seconds
+        
+    Returns:
+        List of path dictionaries with 'length' and 'nodes' keys
+    """
+    # Get solution from customsolution
+    solution = solve_custom_mtsp(points, num_agents=num_agents, time_limit=time_limit)
+    
+    # Convert to path format expected by Hungarian algorithm
+    paths = []
+    for route in solution['routes']:
+        # Calculate path length in miles (convert from meters)
+        path_length = 0
+        for i in range(len(route) - 1):
+            # Get coordinates of current and next point
+            p1 = solution['points'][route[i]]
+            p2 = solution['points'][route[i + 1]]
+            # Calculate Euclidean distance and convert to miles
+            distance_meters = np.linalg.norm(p1 - p2)
+            distance_miles = distance_meters / 1609.34  # Convert meters to miles
+            path_length += distance_miles
+            
+        paths.append({
+            'length': path_length,
+            'nodes': route.tolist()  # Convert numpy array to list for JSON serialization
+        })
+    
+    return paths
+
+def read_paths_from_file(filename='solution_paths.json'):
+    """
+    Read paths from a JSON file created by customsolution.py
+    
+    Args:
+        filename: Name of the JSON file to read from
+        
+    Returns:
+        List of path dictionaries with 'length' and 'nodes' keys
+    """
+    with open(filename, 'r') as f:
+        data = json.load(f)
+    
+    paths = []
+    for route, length in zip(data['routes'], data['route_lengths']):
+        paths.append({
+            'length': length,
+            'nodes': route
+        })
+    
+    return paths
+
+def print_assignment(assignment_result, paths):
     """Print the assignment results in a readable format."""
     print("\n=== Optimal Assignment ===")
-    print(f"Total time for all assignments: {assignment_result['total_time']:.2f} seconds\n")
+    print(f"Total time for all assignments: {assignment_result['total_time']:.2f} seconds")
     
-    print("Individual Assignments:")
+    max_time = 0
+    last_agent = None
+    
+    print("\nIndividual Assignments:")
     for i, assign in enumerate(assignment_result['assignments']):
         print(f"Agent {i+1} ({assign['agent_type']}):")
         print(f"  - Assigned to path: {assign['path_nodes']}")
         print(f"  - Time taken: {assign['time_seconds']:.2f} seconds")
-        print(f"  - Path length: {paths[assign['path_idx']]['length']:.2f} miles")
+        print(f"  - Path length: {paths[assign['path_idx']]['length']:.2f} feet")
         print()
+        
+        # Track the agent with the longest time
+        if assign['time_seconds'] > max_time:
+            max_time = assign['time_seconds']
+            last_agent = f"Agent {i+1} ({assign['agent_type']})"
+    
+    print(f"\nLast agent to finish: {last_agent} with {max_time:.2f} seconds")
 
 # Example usage
 if __name__ == "__main__":
-    # Example paths (from previous solution)
-    paths = [
-        {'length': 1.2, 'nodes': [0, 2, 4, 1]},  # Example path 1
-        {'length': 0.8, 'nodes': [1, 5, 3]},      # Example path 2
-        {'length': 1.5, 'nodes': [0, 6, 2, 5, 1]}, # Example path 3
-        {'length': 1.0, 'nodes': [1, 7, 3, 0]}     # Example path 4
-    ]
-    
-    # Example agent types
-    agent_types = ['drone', 'firefighter', 'drone', 'firefighter']
-    
-    # Get optimal assignment
-    result = assign_agents(paths, agent_types)
-    
-    # Print results
-    print_assignment(result)
-    
-    # Print the cost matrix for reference
-    print("\nCost Matrix (time in seconds):")
-    print("Rows: Agents, Columns: Paths")
-    print("Agent types:", agent_types)
-    print(result['cost_matrix'].round(2))
+    try:
+        # Read paths from the JSON file
+        paths = read_paths_from_file('solution_paths.json')
+        
+        # Example agent types (adjust the number based on your needs)
+        agent_types = ['firefighter','firefighter', 'drone', 'drone'][:len(paths)]
+        
+        # Get optimal assignment
+        result = assign_agents(paths, agent_types)
+        
+        # Print results
+        print_assignment(result, paths)
+        
+        # Print the cost matrix for reference
+        print("\nCost Matrix (time in seconds):")
+        print("Rows: Agents, Columns: Paths")
+        print("Agent types:", agent_types)
+        print(result['cost_matrix'].round(2))
+        
+    except FileNotFoundError:
+        print("Error: solution_paths.json not found. Please run customsolution.py first.")
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")

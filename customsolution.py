@@ -254,8 +254,8 @@ if __name__ == "__main__":
 
 
     # Each agent has a start point, can end at any point
-    start_points = [0, 1, 0, 1]  # Agents start at points 1, 2, and 3
-    end_points = [0, 1, 0, 1]  # -1 means can end anywhere
+    start_points = [0, 1]  # Agents start at points 1, 2, and 3
+    end_points = [0, 1]  # -1 means can end anywhere
 
     # Solve with flexible end points
     solution = solve_flexible_mtsp(
@@ -268,6 +268,10 @@ if __name__ == "__main__":
 
     # Print and plot solution
     if solution:
+        # Output path lengths in the requested format
+        path_lengths = [f"{length:.2f}" for length in solution['route_lengths']]
+        print(f"Path lengths: {path_lengths}")
+        
         print(f"Maximum route length: {solution['max_route_length']:.2f}")
         for i, (route, length) in enumerate(zip(solution['routes'], solution['route_lengths'])):
             print(f"Agent {i+1} route: {route} (length: {length:.2f})")
@@ -276,5 +280,26 @@ if __name__ == "__main__":
         
         if solution.get('unused_starts'):
             print("\nUnused start points:", solution['unused_starts'])
+        
+        # Save solution to a file
+        import json
+        import numpy as np
+        
+        # Convert routes to lists, handling both numpy arrays and regular lists
+        routes = []
+        for route in solution['routes']:
+            if hasattr(route, 'tolist'):  # If it's a numpy array
+                routes.append(route.tolist())
+            else:  # If it's already a list
+                routes.append(route)
+                
+        solution_data = {
+            'routes': routes,
+            'route_lengths': solution['route_lengths'],
+            'points': solution['points'].tolist() if hasattr(solution['points'], 'tolist') else solution['points']
+        }
+        with open('solution_paths.json', 'w') as f:
+            json.dump(solution_data, f)
+        print("\nSolution saved to 'solution_paths.json'")
         
         plot_solution(solution)
