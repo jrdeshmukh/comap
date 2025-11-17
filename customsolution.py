@@ -1,4 +1,4 @@
-import torch
+import torch, json
 import numpy as np
 from ortools_mtsp import my_solve_mtsp
 import matplotlib.pyplot as plt
@@ -239,6 +239,31 @@ def plot_solution(solution):
     plt.tight_layout()
     plt.show()
 
+def export_solution(solution, filename='solutionpaths.json'):
+    """
+    Export the solution to a JSON file in the required format.
+    """
+    if not solution:
+        print("No solution to export.")
+        return
+    
+    # Convert the solution to the required format
+    paths = {}
+    path_counter = 1
+    for i, route in enumerate(solution['routes']):
+        if len(route) > 2:  # Only include non-empty paths (more than just [0, 0])
+            paths[f'path{path_counter}'] = route
+            path_counter += 1
+    
+    # Save to file
+    with open(filename, 'w') as f:
+        json.dump(paths, f, indent=2)
+    
+    print(f"\nSolution exported to {filename}")
+    print("-" * 50)
+    print(json.dumps(paths, indent=2))
+    print("-" * 50)
+
 if __name__ == "__main__":
     # Example usage with 3 agents and flexible start/end points
     points = [
@@ -252,10 +277,19 @@ if __name__ == "__main__":
         [6, -3]      # Bottom left door
     ]
 
+    points2 = [
+        [0, 0], [72, 0], [36, 0], [6, 3], [18, 3], [30, 3], 
+        [42, 3], [54, 3], [66, 3], 
+        [78, 3], [90, 3], [102, 3],
+        [6, -3], [18, -3], [30, -3],
+        [42, -3], [54, -3], [66, -3],
+        [78, -3], [90, -3], [102, -3]
+    ]
 
     # Each agent has a start point, can end at any point
-    start_points = [0, 1]  # Agents start at points 1, 2, and 3
-    end_points = [0, 1]  # -1 means can end anywhere
+    start_points = [0,1,0,1]  # Agents start at points 1, 2, and 3
+    stairwell_points = [1, 2]
+    end_points = [0,1,0,1]  # -1 means can end anywhere
 
     # Solve with flexible end points
     solution = solve_flexible_mtsp(
@@ -268,38 +302,28 @@ if __name__ == "__main__":
 
     # Print and plot solution
     if solution:
-        # Output path lengths in the requested format
-        path_lengths = [f"{length:.2f}" for length in solution['route_lengths']]
-        print(f"Path lengths: {path_lengths}")
-        
+        print(f"Path lengths: {[f'{l:.2f}' for l in solution['route_lengths']]}")
         print(f"Maximum route length: {solution['max_route_length']:.2f}")
-        for i, (route, length) in enumerate(zip(solution['routes'], solution['route_lengths'])):
-            print(f"Agent {i+1} route: {route} (length: {length:.2f})")
-            print(f"  Starts at: {points[route[0]]}")
-            print(f"  Ends at: {points[route[-1]]}")
         
-        if solution.get('unused_starts'):
-            print("\nUnused start points:", solution['unused_starts'])
+        # Print route information
+        for i, route in enumerate(solution['routes']):
+            if len(route) > 2:  # Only show non-empty routes
+                print(f"Agent {i+1} route: {route} (length: {solution['route_lengths'][i]:.2f})")
+                print(f"  Starts at: {points[route[0]]}")
+                print(f"  Ends at: {points[route[-1]]}\n")
         
-        # Save solution to a file
-        import json
-        import numpy as np
+        # Export solution in the required format
+        export_solution(solution, 'solutionpaths.json')
         
-        # Convert routes to lists, handling both numpy arrays and regular lists
-        routes = []
-        for route in solution['routes']:
-            if hasattr(route, 'tolist'):  # If it's a numpy array
-                routes.append(route.tolist())
-            else:  # If it's already a list
-                routes.append(route)
-                
+        # Also save the full solution data for reference
         solution_data = {
-            'routes': routes,
+            'routes': solution['routes'],
             'route_lengths': solution['route_lengths'],
             'points': solution['points'].tolist() if hasattr(solution['points'], 'tolist') else solution['points']
         }
         with open('solution_paths.json', 'w') as f:
             json.dump(solution_data, f)
-        print("\nSolution saved to 'solution_paths.json'")
+        print("\nSolution data saved to 'solution_paths.json'")
         
+        # Show the visualization
         plot_solution(solution)

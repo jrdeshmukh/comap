@@ -125,9 +125,34 @@ def get_paths_from_customsolution(points, num_agents=5, time_limit=10):
     
     return paths
 
-def read_paths_from_file(filename='solution_paths.json'):
+def calculate_path_length(points, path):
     """
-    Read paths from a JSON file created by customsolution.py
+    Calculate the total length of a path in feet, excluding movement between stairwell points.
+    Stairwell indices are 1 and 2 as per the problem definition.
+    """
+    total_length = 0
+    stairwell_indices = {1, 2}  # Stairwell points
+    
+    i = 0
+    while i < len(path) - 1:
+        current_node = path[i]
+        next_node = path[i+1]
+        
+        # Only add distance if neither current nor next node is a stairwell
+        if current_node not in stairwell_indices and next_node not in stairwell_indices:
+            x1, y1 = points[current_node]
+            x2, y2 = points[next_node]
+            # Calculate Euclidean distance in feet
+            distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+            total_length += distance
+        
+        i += 1
+    
+    return total_length
+
+def read_paths_from_file(filename='solutionpaths.json'):
+    """
+    Read paths from the solutionpaths.json file.
     
     Args:
         filename: Name of the JSON file to read from
@@ -138,12 +163,28 @@ def read_paths_from_file(filename='solution_paths.json'):
     with open(filename, 'r') as f:
         data = json.load(f)
     
+    # Define the points (same as in customsolution2.py)
+    points = [
+        [0, 0], [72, 0], [36, 0], [6, 3], [18, 3], [30, 3], 
+        [42, 3], [54, 3], [66, 3], 
+        [78, 3], [90, 3], [102, 3],
+        [6, -3], [18, -3], [30, -3],
+        [42, -3], [54, -3], [66, -3],
+        [78, -3], [90, -3], [102, -3]
+    ]
+
+    stairwell_indices = [1]
+
+    
     paths = []
-    for route, length in zip(data['routes'], data['route_lengths']):
-        paths.append({
-            'length': length,
-            'nodes': route
-        })
+    for path_name, path_nodes in data.items():
+        if path_name.startswith('path'):
+            # Calculate the actual path length
+            path_length = calculate_path_length(points, path_nodes)
+            paths.append({
+                'length': path_length,
+                'nodes': path_nodes
+            })
     
     return paths
 
@@ -174,24 +215,36 @@ def print_assignment(assignment_result, paths):
 if __name__ == "__main__":
     try:
         # Read paths from the JSON file
-        paths = read_paths_from_file('solution_paths.json')
+        paths = read_paths_from_file('solutionpaths.json')
         
-        # Example agent types (adjust the number based on your needs)
-        agent_types = ['firefighter','firefighter', 'drone', 'drone'][:len(paths)]
-        
-        # Get optimal assignment
-        result = assign_agents(paths, agent_types)
-        
-        # Print results
-        print_assignment(result, paths)
-        
-        # Print the cost matrix for reference
-        print("\nCost Matrix (time in seconds):")
-        print("Rows: Agents, Columns: Paths")
-        print("Agent types:", agent_types)
-        print(result['cost_matrix'].round(2))
+        if not paths:
+            print("No valid paths found in the solution file.")
+        else:
+            # Create a balanced number of agent types based on number of paths
+            num_paths = len(paths)
+            num_firefighters = 2#(num_paths + 1) // 2  # At least half firefighters
+            agent_types = (['firefighter'] * num_firefighters + 
+                          ['drone'] * (num_paths - num_firefighters))
+            
+            print(f"Found {num_paths} paths in the solution.")
+            print(f"Agent distribution: {num_firefighters} firefighters, "
+                  f"{num_paths - num_firefighters} drones")
+            
+            # Get optimal assignment
+            result = assign_agents(paths, agent_types)
+            
+            # Print results
+            print_assignment(result, paths)
+            
+            # Print the cost matrix for reference
+            print("\nCost Matrix (time in seconds):")
+            print("Rows: Agents, Columns: Paths")
+            print("Agent types:", agent_types)
+            print(result['cost_matrix'].round(2))
         
     except FileNotFoundError:
-        print("Error: solution_paths.json not found. Please run customsolution.py first.")
+        print("Error: solutionpaths.json not found. Please run customsolution2.py first.")
     except Exception as e:
         print(f"An error occurred: {str(e)}")
+        import traceback
+        traceback.print_exc()
